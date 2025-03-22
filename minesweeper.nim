@@ -17,12 +17,13 @@ type
     Bomb
     Set
 
-  Field = ref object
+  Field* = ref object
     state: FieldState
-    bomb: bool
+    neighbouring_bombs: int
+    bomb*: bool
 
-  Board = object
-    fields: seq[seq[Field]]
+  Board* = object
+    fields*: seq[seq[Field]]
     pressed_fields: int
     num_bombs: int
 
@@ -37,7 +38,7 @@ type
     NorthWest
 
 
-proc init(board: var Board, rows, cols: int) =
+proc init*(board: var Board, rows, cols: int) =
   board.fields = @[]
   board.num_bombs = 0
   board.pressed_fields = 0
@@ -56,7 +57,7 @@ proc print(board: Board) =
   for idx, row in board.fields.pairs:
     for jdx, field in row.pairs:
       if idx != 0 and jdx == 0: stdout.write "  "
-      stdout.write fmt"({field.state}, {field.bomb}) "
+      stdout.write fmt"({field.state}, {field.bomb}, {field.neighbouring_bombs}) "
     stdout.write if idx == board.fields.len - 1: "]\n" else: "\n"
 
 
@@ -80,15 +81,15 @@ proc direction*(x, y, nx, ny: int): Direction =
   return if ydiff > 0: SouthWest else: SouthEast
 
 
-iterator neighbours(board: Board; x, y: int): (int, int, Field) =
+iterator neighbours*(board: Board; x, y: int): (int, int, Field) =
   let
     x_start = if x == 0: 0 else: x - 1
-    x_end   = if x == board.fields.len - 1: board.fields.len - 1 else: x + 1
     y_start = if y == 0: 0 else: y - 1
-    y_end   = if x == board.fields.len - 1: board.fields.len - 1 else: y + 1
+    x_end   = if x == board.fields.len - 1:    x else: x + 1
+    y_end   = if y == board.fields[0].len - 1: y else: y + 1
 
-  for ix in x_start..<x_end:
-    for iy in y_start..<y_end:
+  for ix in x_start..x_end:
+    for iy in y_start..y_end:
       if x == ix and y == iy: continue
       yield (ix, iy, board.fields[ix][iy])
 
@@ -96,12 +97,12 @@ iterator neighbours(board: Board; x, y: int): (int, int, Field) =
 iterator direction_neighbours(board: Board; x, y: int, dir: Direction): (int, int, Field) =
   let
     x_start = if x == 0: 0 else: x - 1
-    x_end   = if x == board.fields.len - 1: board.fields.len - 1 else: x + 1
     y_start = if y == 0: 0 else: y - 1
-    y_end   = if x == board.fields.len - 1: board.fields.len - 1 else: y + 1
+    x_end   = if x == board.fields.len - 1:    x else: x + 1
+    y_end   = if y == board.fields[0].len - 1: y else: y + 1
 
-  for ix in x_start..<x_end:
-    for iy in y_start..<y_end:
+  for ix in x_start..x_end:
+    for iy in y_start..y_end:
       if x == ix and y == iy: continue
       if direction(x, y, ix, iy) == dir:
         yield (ix, iy, board.fields[ix][iy])
@@ -123,15 +124,23 @@ proc neighbours_bomb_count(board: Board; x, y: int): (int, int) =
 # Make it so that when egnerating this, the first hit is always fine
 proc generate_board(board: var Board) =
   const max_ratio = 0.5
+
+  # first pass: bombs generation algorithm
   for idx, row in board.fields.mpairs:
     for jdx, field in row.mpairs:
       let
-        (num, bombs) = neighbours_bomb_count(board, idx, jdx)
+        (num, bombs) = board.neighbours_bomb_count(idx, jdx)
         ratio        = bombs.float / num.float
 
       if ratio < max_ratio and rand(0..1) == 1:
         field.bomb = true
         inc board.num_bombs
+
+  # second pass: set the neighbouring bombs count for each field
+  for idx, row in board.fields.mpairs:
+    for jdx, field in row.mpairs:
+      let (_, bombs) = board.neighbours_bomb_count(idx, jdx)
+      field.neighbouring_bombs = bombs
 
 
 proc update_in_direction(board: var Board; x, y: int, dir: Direction) =
@@ -204,6 +213,7 @@ const
   color_set     = get_color(0x61877d)
 
 
+# TODO extend this to have a separated "draw text centered in passed container"
 proc draw_endgame_state(state: GameState) =
   assert state != GameState.Playing
 
@@ -249,6 +259,8 @@ proc main =
   init_window(width, height, "Cambo Minato")
   set_target_fps(fps)
 
+  board.print()
+
   while not window_should_close():
     let pos = get_mouse_position()
 
@@ -276,13 +288,16 @@ proc main =
       clearBackground(LightGray)
       for i in 0.int32..<rows:
         for j in 0.int32..<cols:
-          let color = case board.fields[i][j].state
+          let field = board.fields[i][j]
+          let color = case field.state
             of FieldState.Neutral: color_neutral
             of FieldState.Pressed: color_pressed
             of FieldState.Bomb:    color_bomb
             of FieldState.Set:     color_set
 
           draw_rectangle(j * box + off, i * box + off, box - off, box - off, color)
+          if field.state == FieldState.Pressed:
+            draw_text(fmt"{field.neighbouring_bombs}", j * box + off, i * box + off, box, DarkGray)
 
       if game_state != GameState.Playing:
         draw_endgame_state(game_state)
