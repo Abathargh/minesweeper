@@ -204,6 +204,29 @@ const
   color_set     = get_color(0x61877d)
 
 
+proc draw_endgame_state(state: GameState) =
+  assert state != GameState.Playing
+
+  const
+    msg_box_width = 300
+    msg_box_height = 200
+
+    msg_box_x = (width - msg_box_width) div 2
+    msg_box_y = (height - msg_box_height) div 2
+
+    msg_font_size = 20
+
+  let
+    msg = if state == GameState.Explosion: "You lost..." else: "You won!"
+    msg_width = measure_text(msg, msg_font_size)
+
+    msg_x = msg_box_x + (msg_box_width - msg_width) div 2
+    msg_y = msg_box_y + (msg_box_height - msg_font_size) div 2
+
+  draw_rectangle(msg_box_x, msg_box_y, msg_box_width , msg_box_height, LightGray)
+  draw_text(msg, msg_x, msg_y, msg_font_size, DarkGray)
+
+
 proc main =
   randomize()
   var game_state = GameState.Playing
@@ -247,7 +270,7 @@ proc main =
 
           if is_mouse_button_pressed(MouseButton.Left):
             if check_collision_point_rec(pos, box):
-              let game_state  = board.update(i, j)
+              game_state  = board.update(i, j)
 
     drawing:
       clearBackground(LightGray)
@@ -261,10 +284,9 @@ proc main =
 
           draw_rectangle(j * box + off, i * box + off, box - off, box - off, color)
 
-          if game_state == GameState.Done:
-            echo "you won!"
-          if game_state == GameState.Explosion:
-            echo "you lost..."
+      if game_state != GameState.Playing:
+        draw_endgame_state(game_state)
+
 
 when isMainModule:
   main()
