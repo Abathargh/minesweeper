@@ -130,6 +130,19 @@ proc generate_board(board: var Board) =
         field.bomb = true
 
 
+proc update_in_direction(board: var Board; x, y: int, dir: Direction) =
+  # This is only ever called if (x, y) is neutral and not a bomb
+  let field = board.fields[x][y]
+
+  field.state = FieldState.Pressed
+  inc board.pressed_fields
+
+  for nx, ny, dir_elem in board.direction_neighbours(x, y, dir):
+    if dir_elem.state != FieldState.Neutral or dir_elem.bomb:
+      continue
+    board.update_in_direction(nx, ny, dir)
+
+
 proc update(board: var Board; x, y: int): GameState =
   # check if (x, y) is a bomb or not; things to be noted:
   # - if it is a bomb:
@@ -154,6 +167,16 @@ proc update(board: var Board; x, y: int): GameState =
   field.state = FieldState.Pressed
   inc board.pressed_fields
 
+  for nx, ny, elem in board.neighbours(x, y):
+    # don't expand when encountering set/pressed blocks
+    if elem.state != FieldState.Neutral or elem.bomb:
+      continue
+
+    # check the cardinal direction of this neighbour with reference to the current element under analysis
+    # and try updating in that direction until a nested neighbour with a non-neutral field is encountered
+    let dir = direction(x, y, nx, ny)
+    board.update_in_direction(nx, ny, dir)
+
   if board.pressed_fields == board.len:
     return GameState.Done
 
@@ -161,13 +184,11 @@ proc update(board: var Board; x, y: int): GameState =
 
 
 const
-  box    = 20.int32
-  fps    = 60
-
+  box  = 20.int32
+  fps  = 60
   rows = 40
   cols = 50
-
-  off = 2
+  off  = 2
 
   width  = box * cols + off
   height = box * rows + off
@@ -204,14 +225,25 @@ proc main =
     # write an algorithm that extracts the i, j coordinates from the mouse position, instead of looping
     for i, row in actual_board.pairs:
       for j, box in row.pairs:
+        let field = board.fields[i][j]
+        if is_mouse_button_pressed(MouseButton.Right):
+          if check_collision_point_rec(pos, box):
+            case field.state
+            of FieldState.Neutral:
+              field.state = FieldState.Set
+            of FieldState.Set:
+              field.state = FieldState.Neutral
+            else:
+              discard
+            continue
+
         if is_mouse_button_pressed(MouseButton.Left):
           if check_collision_point_rec(pos, box):
-            var field = addr board.fields[i][j]
-            field.state = if field.bomb: FieldState.Bomb else: FieldState.Pressed
-        elif is_mouse_button_pressed(MouseButton.Right):
-          if check_collision_point_rec(pos, box):
-            board.fields[i][j].state = FieldState.Set
-
+            let game_state  = board.update(i, j)
+            if game_state == GameState.Done:
+              echo "you won!"
+            if game_state == GameState.Explosion:
+              echo "you lost..."
 
     drawing:
       clearBackground(LightGray)
