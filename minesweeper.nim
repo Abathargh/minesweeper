@@ -1,11 +1,14 @@
 import std/strformat
 import std/random
 
+import raylib
+
 
 type
   State = enum
     Neutral
     Pressed
+    Bomb
     Set
 
   Field = object
@@ -51,7 +54,7 @@ proc neighbours(board: Board; x, y: int): (int, int) =
 
   (num, bombs)
 
-
+# Make it so that when egnerating this, the first hit is always fine
 proc generate_board(board: var Board) =
   const max_ratio = 0.8
   for idx, row in board.fields.mpairs:
@@ -64,16 +67,70 @@ proc generate_board(board: var Board) =
         field.bomb = true
 
 
+
+const
+  box    = 20.int32
+  fps    = 60
+
+  rows = 40
+  cols = 50
+
+  off = 2
+
+  width  = box * cols + off
+  height = box * rows + off
+
+  color_neutral = get_color(0xb8f9ea)
+  color_pressed = get_color(0x50bfa5)
+  color_bomb    = get_color(0x000000)
+  color_set     = get_color(0x61877d)
+
+
 proc main =
   randomize()
   var board = Board()
-  board.init(4, 5)
-  board.print()
+  board.init(rows, cols)
   board.generate_board()
-  board.print()
+
+  var actual_board: seq[seq[Rectangle]] = @[]
+  for i in 0..<rows:
+      actual_board.add newSeq[Rectangle](cols)
+      for j in 0..<cols:
+        actual_board[i][j] = Rectangle(
+          x: (j * box + off).float,
+          y: (i * box + off).float,
+          width: (box - off).float,
+          height: (box - off).float
+        )
+
+  init_window(width, height, "Cambo Minato")
+  set_target_fps(fps)
+
+  while not window_should_close():
+    let pos = get_mouse_position()
+
+    # write an algorithm that extracts the i, j coordinates from the mouse position, instead of looping
+    for i, row in actual_board.pairs:
+      for j, box in row.pairs:
+        if is_mouse_button_pressed(MouseButton.Left):
+          if check_collision_point_rec(pos, box):
+            var field = addr board.fields[i][j]
+            field.state = if field.bomb: State.Bomb else: State.Pressed
+        elif is_mouse_button_pressed(MouseButton.Right):
+          if check_collision_point_rec(pos, box):
+            board.fields[i][j].state = State.Set
 
 
+    drawing:
+      clearBackground(LightGray)
+      for i in 0.int32..<rows:
+        for j in 0.int32..<cols:
+          let color = case board.fields[i][j].state
+            of State.Neutral: color_neutral
+            of State.Pressed: color_pressed
+            of State.Bomb:    color_bomb
+            of State.Set:     color_set
 
-
+          draw_rectangle(j * box + off, i * box + off, box - off, box - off, color)
 
 main()
