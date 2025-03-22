@@ -1,3 +1,4 @@
+import std/assertions
 import std/strformat
 import std/random
 
@@ -5,24 +6,46 @@ import raylib
 
 
 type
-  State = enum
+  GameState = enum
+    Playing
+    Done
+    Explosion
+
+  FieldState = enum
     Neutral
     Pressed
     Bomb
     Set
 
-  Field = object
-    state: State
+  Field = ref object
+    state: FieldState
     bomb: bool
 
   Board = object
     fields: seq[seq[Field]]
+    pressed_fields: int
+
+  Direction* = enum
+    North
+    NorthEast
+    East
+    SouthEast
+    South
+    SouthWest
+    West
+    NorthWest
 
 
 proc init(board: var Board, rows, cols: int) =
   board.fields = @[]
   for i in 0..<rows:
     board.fields.add newSeq[Field](cols)
+    for j in 0..<cols:
+      board.fields[i][j] = Field(state: FieldState.Neutral, bomb: false)
+
+
+proc len(board: Board): int =
+  return board.fields.len * board.fields[0].len
 
 
 proc print(board: Board) =
@@ -34,25 +57,65 @@ proc print(board: Board) =
     stdout.write if idx == board.fields.len - 1: "]\n" else: "\n"
 
 
-proc neighbours(board: Board; x, y: int): (int, int) =
+proc direction*(x, y, nx, ny: int): Direction =
+  ## Checks the direction of the Point(nx, ny) with reference to Point(x, y)
+  let
+    xdiff = x - nx
+    ydiff = y - ny
+
+  assert x != nx or y != ny
+
+  if xdiff == 0:
+    return if ydiff > 0: West else: return East
+
+  if ydiff == 0:
+    return if xdiff > 0: North else: South
+
+  if xdiff > 0:
+    return if ydiff > 0: NorthWest else: return NorthEast
+
+  return if ydiff > 0: SouthWest else: SouthEast
+
+
+iterator neighbours(board: Board; x, y: int): (int, int, Field) =
   let
     x_start = if x == 0: 0 else: x - 1
     x_end   = if x == board.fields.len - 1: board.fields.len - 1 else: x + 1
     y_start = if y == 0: 0 else: y - 1
     y_end   = if x == board.fields.len - 1: board.fields.len - 1 else: y + 1
 
-  var
-    bombs = 0
-    num   = 0
+  for ix in x_start..<x_end:
+    for iy in y_start..<y_end:
+      if x == ix and y == iy: continue
+      yield (ix, iy, board.fields[ix][iy])
+
+
+iterator direction_neighbours(board: Board; x, y: int, dir: Direction): (int, int, Field) =
+  let
+    x_start = if x == 0: 0 else: x - 1
+    x_end   = if x == board.fields.len - 1: board.fields.len - 1 else: x + 1
+    y_start = if y == 0: 0 else: y - 1
+    y_end   = if x == board.fields.len - 1: board.fields.len - 1 else: y + 1
 
   for ix in x_start..<x_end:
     for iy in y_start..<y_end:
       if x == ix and y == iy: continue
-      if board.fields[ix][iy].bomb:
-        inc bombs
-      inc num
+      if direction(x, y, ix, iy) == dir:
+        yield (ix, iy, board.fields[ix][iy])
+
+
+proc neighbours_bomb_count(board: Board; x, y: int): (int, int) =
+  var
+    bombs = 0
+    num   = 0
+
+  for nx, ny, elem in board.neighbours(x, y):
+    if elem.bomb:
+      inc bombs
+    inc num
 
   (num, bombs)
+
 
 # Make it so that when egnerating this, the first hit is always fine
 proc generate_board(board: var Board) =
@@ -60,12 +123,41 @@ proc generate_board(board: var Board) =
   for idx, row in board.fields.mpairs:
     for jdx, field in row.mpairs:
       let
-        (num, bombs) = neighbours(board, idx, jdx)
+        (num, bombs) = neighbours_bomb_count(board, idx, jdx)
         ratio        = bombs.float / num.float
 
       if ratio < max_ratio and rand(0..1) == 1:
         field.bomb = true
 
+
+proc update(board: var Board; x, y: int): GameState =
+  # check if (x, y) is a bomb or not; things to be noted:
+  # - if it is a bomb:
+  #   - switch state to bomb so the ui can update
+  #   - return GameState.Bomb
+  # - if it is not a bomb:
+  #   - update the board, the algorithm may be:
+  #     - if neighbours don't have a bomb in the direction from which the selection came, then expand again
+  #     - if the neighbour is set or pressed stop expanding
+  #     - if there is a bomb in that direction, stop expanding
+  #   -  in case every element is cleared, return GameState.Done, otherwise GameState.Playing
+
+  let field = board.fields[x][y]
+
+  if field.bomb:
+    return GameState.Explosion
+
+  if field.state == FieldState.Set or field.state == FieldState.Pressed:
+    return GameState.Playing
+
+  # (x, y) is neutral and it has no bomb => let's mark it as pressed
+  field.state = FieldState.Pressed
+  inc board.pressed_fields
+
+  if board.pressed_fields == board.len:
+    return GameState.Done
+
+  GameState.Playing
 
 
 const
@@ -115,10 +207,10 @@ proc main =
         if is_mouse_button_pressed(MouseButton.Left):
           if check_collision_point_rec(pos, box):
             var field = addr board.fields[i][j]
-            field.state = if field.bomb: State.Bomb else: State.Pressed
+            field.state = if field.bomb: FieldState.Bomb else: FieldState.Pressed
         elif is_mouse_button_pressed(MouseButton.Right):
           if check_collision_point_rec(pos, box):
-            board.fields[i][j].state = State.Set
+            board.fields[i][j].state = FieldState.Set
 
 
     drawing:
@@ -126,11 +218,13 @@ proc main =
       for i in 0.int32..<rows:
         for j in 0.int32..<cols:
           let color = case board.fields[i][j].state
-            of State.Neutral: color_neutral
-            of State.Pressed: color_pressed
-            of State.Bomb:    color_bomb
-            of State.Set:     color_set
+            of FieldState.Neutral: color_neutral
+            of FieldState.Pressed: color_pressed
+            of FieldState.Bomb:    color_bomb
+            of FieldState.Set:     color_set
 
           draw_rectangle(j * box + off, i * box + off, box - off, box - off, color)
 
-main()
+
+when isMainModule:
+  main()
