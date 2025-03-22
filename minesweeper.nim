@@ -24,6 +24,7 @@ type
   Board = object
     fields: seq[seq[Field]]
     pressed_fields: int
+    num_bombs: int
 
   Direction* = enum
     North
@@ -38,6 +39,8 @@ type
 
 proc init(board: var Board, rows, cols: int) =
   board.fields = @[]
+  board.num_bombs = 0
+  board.pressed_fields = 0
   for i in 0..<rows:
     board.fields.add newSeq[Field](cols)
     for j in 0..<cols:
@@ -119,7 +122,7 @@ proc neighbours_bomb_count(board: Board; x, y: int): (int, int) =
 
 # Make it so that when egnerating this, the first hit is always fine
 proc generate_board(board: var Board) =
-  const max_ratio = 0.8
+  const max_ratio = 0.5
   for idx, row in board.fields.mpairs:
     for jdx, field in row.mpairs:
       let
@@ -128,6 +131,7 @@ proc generate_board(board: var Board) =
 
       if ratio < max_ratio and rand(0..1) == 1:
         field.bomb = true
+        inc board.num_bombs
 
 
 proc update_in_direction(board: var Board; x, y: int, dir: Direction) =
@@ -158,6 +162,7 @@ proc update(board: var Board; x, y: int): GameState =
   let field = board.fields[x][y]
 
   if field.bomb:
+    field.state = FieldState.Bomb
     return GameState.Explosion
 
   if field.state == FieldState.Set or field.state == FieldState.Pressed:
@@ -177,7 +182,7 @@ proc update(board: var Board; x, y: int): GameState =
     let dir = direction(x, y, nx, ny)
     board.update_in_direction(nx, ny, dir)
 
-  if board.pressed_fields == board.len:
+  if board.pressed_fields == board.len - board.num_bombs:
     return GameState.Done
 
   GameState.Playing
@@ -201,6 +206,8 @@ const
 
 proc main =
   randomize()
+  var game_state = GameState.Playing
+
   var board = Board()
   board.init(rows, cols)
   board.generate_board()
@@ -223,27 +230,24 @@ proc main =
     let pos = get_mouse_position()
 
     # write an algorithm that extracts the i, j coordinates from the mouse position, instead of looping
-    for i, row in actual_board.pairs:
-      for j, box in row.pairs:
-        let field = board.fields[i][j]
-        if is_mouse_button_pressed(MouseButton.Right):
-          if check_collision_point_rec(pos, box):
-            case field.state
-            of FieldState.Neutral:
-              field.state = FieldState.Set
-            of FieldState.Set:
-              field.state = FieldState.Neutral
-            else:
-              discard
-            continue
+    if game_state == GameState.Playing:
+      for i, row in actual_board.pairs:
+        for j, box in row.pairs:
+          let field = board.fields[i][j]
+          if is_mouse_button_pressed(MouseButton.Right):
+            if check_collision_point_rec(pos, box):
+              case field.state
+              of FieldState.Neutral:
+                field.state = FieldState.Set
+              of FieldState.Set:
+                field.state = FieldState.Neutral
+              else:
+                discard
+              continue
 
-        if is_mouse_button_pressed(MouseButton.Left):
-          if check_collision_point_rec(pos, box):
-            let game_state  = board.update(i, j)
-            if game_state == GameState.Done:
-              echo "you won!"
-            if game_state == GameState.Explosion:
-              echo "you lost..."
+          if is_mouse_button_pressed(MouseButton.Left):
+            if check_collision_point_rec(pos, box):
+              let game_state  = board.update(i, j)
 
     drawing:
       clearBackground(LightGray)
@@ -257,6 +261,10 @@ proc main =
 
           draw_rectangle(j * box + off, i * box + off, box - off, box - off, color)
 
+          if game_state == GameState.Done:
+            echo "you won!"
+          if game_state == GameState.Explosion:
+            echo "you lost..."
 
 when isMainModule:
   main()
