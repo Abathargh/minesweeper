@@ -76,8 +76,7 @@ suite "logic":
 
     let test_cases = [
       TestCase(
-        x: 1,
-        y: 1,
+        x: 1, y: 1,
         exp: @[
           (0, 0, true),
           (0, 1, true),
@@ -87,7 +86,43 @@ suite "logic":
           (2, 0, false),
           (2, 1, false),
           (2, 2, true),
-        ])
+        ]),
+      TestCase(
+        x: 0, y: 0,
+        exp: @[
+          (0, 1, true),
+          (1, 0, false),
+          (1, 1, false),
+        ]
+      ),
+      TestCase(
+        x: 0, y: 2,
+        exp: @[
+          (0, 1, true),
+          (1, 1, false),
+          (1, 2, true),
+        ]
+      ),
+      TestCase(
+        x: 1, y: 2,
+        exp: @[
+          (0, 1, true),
+          (0, 2, false),
+          (1, 1, false),
+          (2, 1, false),
+          (2, 2, true),
+        ]
+      ),
+      TestCase(
+        x: 2, y: 1,
+        exp: @[
+          (1, 0, false),
+          (1, 1, false),
+          (1, 2, true),
+          (2, 0, false),
+          (2, 2, true),
+        ]
+      ),
     ]
 
     for test_case in test_cases:
