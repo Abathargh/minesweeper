@@ -1,8 +1,23 @@
 import std/assertions
 import std/strformat
 import std/random
-
 import raylib
+
+
+const
+  box  = 20.int32
+  fps  = 60
+  rows = 40
+  cols = 50
+  off  = 2
+
+  width  = box * cols + off
+  height = box * rows + off
+
+  color_neutral = get_color(0xb8f9ea)
+  color_pressed = get_color(0x50bfa5)
+  color_bomb    = get_color(0x000000)
+  color_set     = get_color(0x61877d)
 
 
 type
@@ -27,6 +42,8 @@ type
     pressed_fields: int
     num_bombs: int
 
+  CollisionBoard = seq[seq[Rectangle]]
+
   Direction* = enum
     North
     NorthEast
@@ -46,6 +63,14 @@ proc init*(board: var Board, rows, cols: int) =
     board.fields.add newSeq[Field](cols)
     for j in 0..<cols:
       board.fields[i][j] = Field(state: FieldState.Neutral, bomb: false)
+
+
+proc clear(board: var Board) =
+  for row in board.fields:
+    for field in row:
+      field.state = FieldState.Neutral
+      field.neighbouring_bombs = 0
+      field.bomb = false
 
 
 proc len(board: Board): int =
@@ -197,20 +222,17 @@ proc update(board: var Board; x, y: int): GameState =
   GameState.Playing
 
 
-const
-  box  = 20.int32
-  fps  = 60
-  rows = 40
-  cols = 50
-  off  = 2
-
-  width  = box * cols + off
-  height = box * rows + off
-
-  color_neutral = get_color(0xb8f9ea)
-  color_pressed = get_color(0x50bfa5)
-  color_bomb    = get_color(0x000000)
-  color_set     = get_color(0x61877d)
+proc init(cboard: var CollisionBoard; rows, cols: int) =
+  cboard = @[]
+  for i in 0..<rows:
+    cboard.add newSeq[Rectangle](cols)
+    for j in 0..<cols:
+      cboard[i][j] = Rectangle(
+        x: (j * box + off).float,
+        y: (i * box + off).float,
+        width: (box - off).float,
+        height: (box - off).float
+      )
 
 
 # TODO extend this to have a separated "draw text centered in passed container"
@@ -227,7 +249,7 @@ proc draw_endgame_state(state: GameState) =
     msg_font_size = 20
 
   let
-    msg = if state == GameState.Explosion: "You lost..." else: "You won!"
+    msg = if state == GameState.Explosion: "You lost... (S to restart)" else: "You won!"
     msg_width = measure_text(msg, msg_font_size)
 
     msg_x = msg_box_x + (msg_box_width - msg_width) div 2
@@ -238,35 +260,34 @@ proc draw_endgame_state(state: GameState) =
 
 
 proc main =
-  randomize()
-  var game_state = GameState.Playing
+  var
+    game_state = GameState.Playing
+    board = Board()
+    collision_board = default(CollisionBoard)
 
-  var board = Board()
   board.init(rows, cols)
-  board.generate_board()
+  collision_board.init(rows, cols)
 
-  var actual_board: seq[seq[Rectangle]] = @[]
-  for i in 0..<rows:
-      actual_board.add newSeq[Rectangle](cols)
-      for j in 0..<cols:
-        actual_board[i][j] = Rectangle(
-          x: (j * box + off).float,
-          y: (i * box + off).float,
-          width: (box - off).float,
-          height: (box - off).float
-        )
 
   init_window(width, height, "Cambo Minato")
   set_target_fps(fps)
 
+  randomize()
+
+  board.generate_board()
   board.print()
 
   while not window_should_close():
+    if is_key_pressed(KeyboardKey.S):
+      board.clear()
+      board.generate_board()
+      game_state = GameState.Playing
+
     let pos = get_mouse_position()
 
     # write an algorithm that extracts the i, j coordinates from the mouse position, instead of looping
     if game_state == GameState.Playing:
-      for i, row in actual_board.pairs:
+      for i, row in collision_board.pairs:
         for j, box in row.pairs:
           let field = board.fields[i][j]
           if is_mouse_button_pressed(MouseButton.Right):
