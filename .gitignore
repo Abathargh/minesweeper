@@ -1,4 +1,5 @@
 .idea/
+.nimcache/
 minesweeper
 nimble.develop
 nimble.paths
