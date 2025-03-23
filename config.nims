@@ -4,3 +4,6 @@ when withDir(thisDir(), system.fileExists("nimble.paths")):
 # end Nimble config
 
 switch("nimcache", ".nimcache")
+switch("define", "release")
+switch("define", "lto")
+switch("opt", "size")
