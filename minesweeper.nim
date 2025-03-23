@@ -5,10 +5,10 @@ import raylib
 
 
 const
-  box  = 20.int32
+  box  = 30.int32
   fps  = 60
-  rows = 40
-  cols = 50
+  rows = 20
+  cols = 20
   off  = 2
 
   width  = box * cols + off
@@ -32,7 +32,7 @@ type
     Bomb
     Set
 
-  Field* = ref object
+  Field* = object
     state: FieldState
     neighbouring_bombs: int
     bomb*: bool
@@ -68,15 +68,15 @@ proc init*(board: var Board, rows, cols: int) =
 proc clear(board: var Board) =
   board.num_bombs = 0
   board.pressed_fields = 0
-  for row in board.fields:
-    for field in row:
-      field.state = FieldState.Neutral
-      field.neighbouring_bombs = 0
-      field.bomb = false
+  for idx, row in board.fields.pairs:
+    for jdx, field in row.pairs:
+      board.fields[idx][jdx].state = FieldState.Neutral
+      board.fields[idx][jdx].neighbouring_bombs = 0
+      board.fields[idx][jdx].bomb = false
 
 
 proc len(board: Board): int =
-  return board.fields.len * board.fields[0].len
+  board.fields.len * board.fields[0].len
 
 
 proc print(board: Board) =
@@ -163,7 +163,7 @@ proc neighbours_bomb_count(board: Board; x, y: int): (int, int) =
 
 # Make it so that when egnerating this, the first hit is always fine
 proc generate_board(board: var Board) =
-  const max_ratio = 0.5
+  const max_ratio = 0.2
 
   # first pass: bombs generation algorithm
   for idx, row in board.fields.mpairs:
@@ -185,7 +185,7 @@ proc generate_board(board: var Board) =
 
 proc update_in_direction(board: var Board; x, y: int, dir: Direction) =
   # This is only ever called if (x, y) is neutral and not a bomb
-  let field = board.fields[x][y]
+  let field = addr board.fields[x][y]
 
   field.state = FieldState.Pressed
   inc board.pressed_fields
@@ -208,7 +208,7 @@ proc update(board: var Board; x, y: int): GameState =
   #     - if there is a bomb in that direction, stop expanding
   #   -  in case every element is cleared, return GameState.Done, otherwise GameState.Playing
 
-  let field = board.fields[x][y]
+  let field = addr board.fields[x][y]
 
   if field.bomb:
     field.state = FieldState.Bomb
@@ -302,7 +302,7 @@ proc main =
     if game_state == GameState.Playing:
       for i, row in collision_board.pairs:
         for j, box in row.pairs:
-          let field = board.fields[i][j]
+          let field = addr board.fields[i][j]
           if is_mouse_button_pressed(MouseButton.Right):
             if check_collision_point_rec(pos, box):
               case field.state
