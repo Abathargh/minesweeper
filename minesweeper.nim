@@ -280,9 +280,16 @@ proc main =
     board = Board()
     collision_board = default(CollisionBoard)
 
+  const
+    icon_data: string = static_read("icon.png")
+
+  let
+    icon = load_image_from_memory(".png", cast[seq[uint8]](icon_data))
+
   randomize()
 
   init_window(width, height, "Cambo Minato")
+  set_window_icon(icon)
   set_target_fps(fps)
 
   board.init(rows, cols)
