@@ -161,8 +161,9 @@ proc neighbours_bomb_count(board: Board; x, y: int): (int, int) =
   (num, bombs)
 
 
-# Make it so that when egnerating this, the first hit is always fine
-proc generate_board(board: var Board) =
+proc generate_board(board: var Board; x, y: int) =
+  # Generate a board with a random mapping for bombs.
+  # Make it so that the first point (x, y), is never a bomb.
   const max_ratio = 0.2
 
   # first pass: bombs generation algorithm
@@ -172,7 +173,7 @@ proc generate_board(board: var Board) =
         (num, bombs) = board.neighbours_bomb_count(idx, jdx)
         ratio        = bombs.float / num.float
 
-      if ratio < max_ratio and rand(0..1) == 1:
+      if not (idx == x and jdx == y) and ratio < max_ratio and rand(0..1) == 1:
         field.bomb = true
         inc board.num_bombs
 
@@ -207,7 +208,6 @@ proc update(board: var Board; x, y: int): GameState =
   #     - if the neighbour is set or pressed stop expanding
   #     - if there is a bomb in that direction, stop expanding
   #   -  in case every element is cleared, return GameState.Done, otherwise GameState.Playing
-
   let field = addr board.fields[x][y]
 
   if field.bomb:
@@ -275,25 +275,24 @@ proc draw_endgame_state(state: GameState) =
 
 proc main =
   var
+    started = false
     game_state = GameState.Playing
     board = Board()
     collision_board = default(CollisionBoard)
 
-  board.init(rows, cols)
-  collision_board.init(rows, cols)
+  randomize()
 
   init_window(width, height, "Cambo Minato")
   set_target_fps(fps)
 
-  randomize()
-
-  board.generate_board()
+  board.init(rows, cols)
+  collision_board.init(rows, cols)
   board.print()
 
   while not window_should_close():
     if is_key_pressed(KeyboardKey.S):
       board.clear()
-      board.generate_board()
+      started = false
       game_state = GameState.Playing
 
     let pos = get_mouse_position()
@@ -307,12 +306,15 @@ proc main =
             if check_collision_point_rec(pos, box):
               case field.state
               of FieldState.Neutral: field.state = FieldState.Set
-              of FieldState.Set: field.state = FieldState.Neutral
+              of FieldState.Set:     field.state = FieldState.Neutral
               else: discard
               continue
 
           if is_mouse_button_pressed(MouseButton.Left) and field.state == FieldState.Neutral:
             if check_collision_point_rec(pos, box):
+              if not started:
+                board.generate_board(i, j)
+                started = true
               game_state  = board.update(i, j)
 
     drawing:
