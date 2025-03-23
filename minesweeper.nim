@@ -66,6 +66,8 @@ proc init*(board: var Board, rows, cols: int) =
 
 
 proc clear(board: var Board) =
+  board.num_bombs = 0
+  board.pressed_fields = 0
   for row in board.fields:
     for field in row:
       field.state = FieldState.Neutral
@@ -78,12 +80,25 @@ proc len(board: Board): int =
 
 
 proc print(board: Board) =
+  let
+    pressed = board.pressed_fields
+    bombs   = board.num_bombs
+
+  stdout.write &"{pressed} - {bombs}\n"
   stdout.write "[ "
   for idx, row in board.fields.pairs:
     for jdx, field in row.pairs:
       if idx != 0 and jdx == 0: stdout.write "  "
-      stdout.write fmt"({field.state}, {field.bomb}, {field.neighbouring_bombs}) "
+      let
+        state  = if field.state == FieldState.Neutral: "●" else: "○"
+        bomb   = if field.bomb: "▣" else: "□"
+        nbombs = field.neighbouring_bombs
+      stdout.write fmt"({state}, {bomb}, {nbombs}) "
     stdout.write if idx == board.fields.len - 1: "]\n" else: "\n"
+
+
+proc winning_state(board: Board): bool =
+  board.len - board.pressed_fields == board.num_bombs
 
 
 proc direction*(x, y, nx, ny: int): Direction =
@@ -216,7 +231,7 @@ proc update(board: var Board; x, y: int): GameState =
     let dir = direction(x, y, nx, ny)
     board.update_in_direction(nx, ny, dir)
 
-  if board.pressed_fields == board.len - board.num_bombs:
+  if board.winning_state():
     return GameState.Done
 
   GameState.Playing
@@ -235,7 +250,6 @@ proc init(cboard: var CollisionBoard; rows, cols: int) =
       )
 
 
-# TODO extend this to have a separated "draw text centered in passed container"
 proc draw_endgame_state(state: GameState) =
   assert state != GameState.Playing
 
@@ -268,7 +282,6 @@ proc main =
   board.init(rows, cols)
   collision_board.init(rows, cols)
 
-
   init_window(width, height, "Cambo Minato")
   set_target_fps(fps)
 
@@ -293,15 +306,12 @@ proc main =
           if is_mouse_button_pressed(MouseButton.Right):
             if check_collision_point_rec(pos, box):
               case field.state
-              of FieldState.Neutral:
-                field.state = FieldState.Set
-              of FieldState.Set:
-                field.state = FieldState.Neutral
-              else:
-                discard
+              of FieldState.Neutral: field.state = FieldState.Set
+              of FieldState.Set: field.state = FieldState.Neutral
+              else: discard
               continue
 
-          if is_mouse_button_pressed(MouseButton.Left):
+          if is_mouse_button_pressed(MouseButton.Left) and field.state == FieldState.Neutral:
             if check_collision_point_rec(pos, box):
               game_state  = board.update(i, j)
 
@@ -316,9 +326,13 @@ proc main =
             of FieldState.Bomb:    color_bomb
             of FieldState.Set:     color_set
 
+          # draw the box for this field, with the appropriate color
           draw_rectangle(j * box + off, i * box + off, box - off, box - off, color)
+
+          # write the number of mines close to this box
           if field.state == FieldState.Pressed:
-            draw_text(fmt"{field.neighbouring_bombs}", j * box + off, i * box + off, box, DarkGray)
+            let text = if field.neighbouring_bombs == 0: "" else: fmt"{field.neighbouring_bombs}"
+            draw_text(text, j * box + off, i * box + off, box, DarkGray)
 
       if game_state != GameState.Playing:
         draw_endgame_state(game_state)
