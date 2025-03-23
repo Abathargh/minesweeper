@@ -294,7 +294,6 @@ proc main =
 
   board.init(rows, cols)
   collision_board.init(rows, cols)
-  board.print()
 
   while not window_should_close():
     if is_key_pressed(KeyboardKey.S):
