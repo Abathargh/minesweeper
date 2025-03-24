@@ -1,6 +1,7 @@
 import std/assertions
 import std/strformat
 import std/random
+import std/with
 import raylib
 
 
@@ -11,6 +12,8 @@ const
   cols = 20
   off  = 2
 
+  box_off  = box - off
+
   width  = box * cols + off
   height = box * rows + off
 
@@ -18,6 +21,9 @@ const
   color_pressed = get_color(0x50bfa5)
   color_bomb    = get_color(0x000000)
   color_set     = get_color(0x61877d)
+
+  won_msg  = "You won!"
+  lost_msg = "You lost... (S to restart)"
 
 
 type
@@ -70,9 +76,10 @@ proc clear(board: var Board) =
   board.pressed_fields = 0
   for idx, row in board.fields.pairs:
     for jdx, field in row.pairs:
-      board.fields[idx][jdx].state = FieldState.Neutral
-      board.fields[idx][jdx].neighbouring_bombs = 0
-      board.fields[idx][jdx].bomb = false
+      with board.fields[idx][jdx]:
+        state = FieldState.Neutral
+        neighbouring_bombs = 0
+        bomb = false
 
 
 proc len(board: Board): int =
@@ -134,7 +141,7 @@ iterator neighbours*(board: Board; x, y: int): (int, int, Field) =
       yield (ix, iy, board.fields[ix][iy])
 
 
-iterator direction_neighbours(board: Board; x, y: int, dir: Direction): (int, int, Field) =
+iterator dir_neighbours(board: Board; x, y: int; dir: Direction): (int, int, Field) =
   let
     x_start = if x == 0: 0 else: x - 1
     y_start = if y == 0: 0 else: y - 1
@@ -154,8 +161,7 @@ proc neighbours_bomb_count(board: Board; x, y: int): (int, int) =
     num   = 0
 
   for nx, ny, elem in board.neighbours(x, y):
-    if elem.bomb:
-      inc bombs
+    if elem.bomb: inc bombs
     inc num
 
   (num, bombs)
@@ -191,7 +197,7 @@ proc update_in_direction(board: var Board; x, y: int, dir: Direction) =
   field.state = FieldState.Pressed
   inc board.pressed_fields
 
-  for nx, ny, dir_elem in board.direction_neighbours(x, y, dir):
+  for nx, ny, dir_elem in board.dir_neighbours(x, y, dir):
     if dir_elem.state != FieldState.Neutral or dir_elem.bomb:
       continue
     board.update_in_direction(nx, ny, dir)
@@ -204,10 +210,12 @@ proc update(board: var Board; x, y: int): GameState =
   #   - return GameState.Bomb
   # - if it is not a bomb:
   #   - update the board, the algorithm may be:
-  #     - if neighbours don't have a bomb in the direction from which the selection came, then expand again
+  #     - if neighbours don't have a bomb in the direction from which the
+  #     selection came, then expand again
   #     - if the neighbour is set or pressed stop expanding
   #     - if there is a bomb in that direction, stop expanding
-  #   -  in case every element is cleared, return GameState.Done, otherwise GameState.Playing
+  #   -  in case every element is cleared, return GameState.Done, otherwise
+  #   GameState.Playing
   let field = addr board.fields[x][y]
 
   if field.bomb:
@@ -226,8 +234,9 @@ proc update(board: var Board; x, y: int): GameState =
     if elem.state != FieldState.Neutral or elem.bomb:
       continue
 
-    # check the cardinal direction of this neighbour with reference to the current element under analysis
-    # and try updating in that direction until a nested neighbour with a non-neutral field is encountered
+    # check the cardinal direction of this neighbour with reference to the
+    # current element under analysis and try updating in that direction until
+    # a nested neighbour with a non-neutral field is encountered
     let dir = direction(x, y, nx, ny)
     board.update_in_direction(nx, ny, dir)
 
@@ -263,13 +272,13 @@ proc draw_endgame_state(state: GameState) =
     msg_font_size = 20
 
   let
-    msg = if state == GameState.Explosion: "You lost... (S to restart)" else: "You won!"
+    msg = if state == GameState.Explosion: lost_msg else: won_msg
     msg_width = measure_text(msg, msg_font_size)
 
     msg_x = msg_box_x + (msg_box_width - msg_width) div 2
     msg_y = msg_box_y + (msg_box_height - msg_font_size) div 2
 
-  draw_rectangle(msg_box_x, msg_box_y, msg_box_width , msg_box_height, LightGray)
+  draw_rectangle(msg_box_x, msg_box_y, msg_box_width, msg_box_height, LightGray)
   draw_text(msg, msg_x, msg_y, msg_font_size, DarkGray)
 
 
@@ -288,7 +297,7 @@ proc main =
 
   randomize()
 
-  init_window(width, height, "Cambo Minato")
+  init_window(width, height, "Minesweeper")
   set_window_icon(icon)
   set_target_fps(fps)
 
@@ -303,7 +312,8 @@ proc main =
 
     let pos = get_mouse_position()
 
-    # write an algorithm that extracts the i, j coordinates from the mouse position, instead of looping
+    # write an algorithm that extracts the i, j coordinates from the mouse
+    # position, instead of looping
     if game_state == GameState.Playing:
       for i, row in collision_board.pairs:
         for j, box in row.pairs:
@@ -316,12 +326,13 @@ proc main =
               else: discard
               continue
 
-          if is_mouse_button_pressed(MouseButton.Left) and field.state == FieldState.Neutral:
-            if check_collision_point_rec(pos, box):
-              if not started:
-                board.generate_board(i, j)
-                started = true
-              game_state  = board.update(i, j)
+          if is_mouse_button_pressed(MouseButton.Left):
+            if field.state == FieldState.Neutral:
+              if check_collision_point_rec(pos, box):
+                if not started:
+                  board.generate_board(i, j)
+                  started = true
+                game_state  = board.update(i, j)
 
     drawing:
       clearBackground(LightGray)
@@ -335,11 +346,12 @@ proc main =
             of FieldState.Set:     color_set
 
           # draw the box for this field, with the appropriate color
-          draw_rectangle(j * box + off, i * box + off, box - off, box - off, color)
+          draw_rectangle(j * box + off, i * box + off, box_off, box_off, color)
 
           # write the number of mines close to this box
           if field.state == FieldState.Pressed:
-            let text = if field.neighbouring_bombs == 0: "" else: fmt"{field.neighbouring_bombs}"
+            let num_bombs = field.neighbouring_bombs
+            let text = if num_bombs == 0: "" else: fmt"{num_bombs}"
             draw_text(text, j * box + off, i * box + off, box, DarkGray)
 
       if game_state != GameState.Playing:
